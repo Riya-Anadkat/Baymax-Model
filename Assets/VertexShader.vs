@@ -19,6 +19,8 @@ uniform mat3 NormalMatrix;
 
 struct Material {
     vec3 kd;
+    vec3 ks;
+    float shininess;
 };
 uniform Material material;
 
@@ -27,7 +29,7 @@ uniform vec3 ambientIntensity;
 
 out vec3 vcolour;
 
-vec3 diffuseLighting(vec3 vertPosition, vec3 vertNormal) {
+vec3 lighting(vec3 vertPosition, vec3 vertNormal) {
     // Direction from vertex to light source.
     vec3 l = normalize(light.position - vertPosition);
 
@@ -36,13 +38,20 @@ vec3 diffuseLighting(vec3 vertPosition, vec3 vertNormal) {
     vec3 diffuse;
     diffuse = material.kd * n_dot_l;
 
-    return ambientIntensity*material.kd + light.rgbIntensity*diffuse;
+    vec3 v = normalize(-vertPosition);
+    vec3 r = reflect(-l, vertNormal);
+    float r_dot_v = max(dot(r, v), 0.0);
+    vec3 specular = material.ks * pow(r_dot_v, material.shininess);
+
+    vec3 ambient = ambientIntensity * material.kd;
+    vec3 result = ambient + light.rgbIntensity * (diffuse + specular);
+    return result;
 }
 
 void main() {
 	vec4 pos4 = vec4(position, 1.0);
 
-	vcolour = diffuseLighting((ModelView * pos4).xyz, normalize(NormalMatrix * normal));
+	vcolour = lighting((ModelView * pos4).xyz, normalize(NormalMatrix * normal));
 	
 	gl_Position = Perspective * ModelView * pos4;
 }

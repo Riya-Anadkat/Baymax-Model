@@ -20,6 +20,41 @@ using namespace glm;
 static bool show_gui = true;
 
 const size_t CIRCLE_PTS = 48;
+bool use_depth_buffering = true;
+bool use_backface_culling = false;
+bool use_frontface_culling = false;
+int interactionMode = 0;
+bool isLeftDragging = false;
+bool isMiddleDragging = false;
+bool isRightDragging = false;
+double previousXPos = 0.0;
+double previousYPos = 0.0;
+
+glm::mat4 rotateYMatrix(float angle) {
+	// glm::mat4 rotatedMatrix = glm::mat4(cos(angle), 0, sin(angle), 0,
+	// 									0, 1, 0, 0,
+	// 									-sin(angle), 0, cos(angle), 0,
+	// 									0, 0, 0, 1);
+	glm::mat4 rotatedMatrix = glm::mat4(1.0f);
+	rotatedMatrix[0]=glm::vec4(cos(angle), 0, sin(angle), 0);
+	rotatedMatrix[1]=glm::vec4(0, 1, 0, 0);
+	rotatedMatrix[2]=glm::vec4(-sin(angle), 0, cos(angle), 0);
+	rotatedMatrix[3]=glm::vec4(0, 0, 0,1);
+	return rotatedMatrix;
+}
+glm::mat4 rotateZMatrix(float angle) {
+	glm::mat4 rotatedMatrix = glm::mat4(1.0f);
+	rotatedMatrix[0]=glm::vec4(cos(angle), -sin(angle), 0, 0);
+	rotatedMatrix[1]=glm::vec4(sin(angle), cos(angle), 0, 0);
+	rotatedMatrix[2]=glm::vec4(0, 0, 1, 0);
+	rotatedMatrix[3]=glm::vec4(0,0,0,1);
+	return rotatedMatrix;
+}
+glm::mat4 translateMatrix(float x, float y, float z) {
+	glm::mat4 translatedMatrix = glm::mat4(1.0f);
+	translatedMatrix[3]=glm::vec4(x,y,z,1.0f);
+	return translatedMatrix;
+}
 
 //----------------------------------------------------------------------------------------
 // Constructor
@@ -259,8 +294,10 @@ void A3::initViewMatrix() {
 //----------------------------------------------------------------------------------------
 void A3::initLightSources() {
 	// World-space position
-	m_light.position = vec3(10.0f, 10.0f, 10.0f);
-	m_light.rgbIntensity = vec3(0.0f); // light
+	m_light.position = vec3(5.0f, 10.0f, 15.0f);
+	// m_light.rgbIntensity = vec3(0.0f); // light
+	m_light.rgbIntensity = vec3(0.8f, 0.8f, 0.8f);
+
 }
 
 //----------------------------------------------------------------------------------------
@@ -324,18 +361,48 @@ void A3::guiLogic()
 	ImGuiWindowFlags windowFlags(ImGuiWindowFlags_AlwaysAutoResize);
 	float opacity(0.5f);
 
-	ImGui::Begin("Properties", &showDebugWindow, ImVec2(100,100), opacity,
+	ImGui::Begin("Menu", &showDebugWindow, ImVec2(100,100), opacity,
 			windowFlags);
 
 
 		// Add more gui elements here here ...
-
-
-		// Create Button, and check if it was clicked:
-		if( ImGui::Button( "Quit Application" ) ) {
-			glfwSetWindowShouldClose(m_window, GL_TRUE);
+		if( ImGui::TreeNode( "Application" ) ) {
+			// Create Button, and check if it was clicked:
+			if( ImGui::Button( "Quit Application" ) ) {
+				glfwSetWindowShouldClose(m_window, GL_TRUE);
+			}
+			ImGui::TreePop();
 		}
-
+		if( ImGui::TreeNode( "Edit" ) ) {
+			ImGui::TreePop();
+		}
+		if( ImGui::TreeNode( "Options" ) ) {
+			if( ImGui::Checkbox( "Z-buffer", &use_depth_buffering ) ) {
+			if( use_depth_buffering ) {
+				glEnable( GL_DEPTH_TEST );
+			} else {
+				glDisable( GL_DEPTH_TEST );
+			}
+			}
+			if( ImGui::Checkbox( "Backface culling", &use_backface_culling ) ) {
+				
+			}
+			if( ImGui::Checkbox( "Frontface culling", &use_frontface_culling ) ) {
+				
+			}
+			ImGui::TreePop();
+		}	
+		ImGui::PushID( 0 );
+		if( ImGui::RadioButton( "Position/Orientation (P)", &interactionMode, 0 ) ) {
+			// Select this.
+		}
+		ImGui::PopID();
+		ImGui::PushID( 1 );
+		if( ImGui::RadioButton( "Joints (J)", &interactionMode, 1 ) ) {
+			// Select this.
+		}
+		ImGui::PopID();
+		
 		ImGui::Text( "Framerate: %.1f FPS", ImGui::GetIO().Framerate );
 
 	ImGui::End();
@@ -368,6 +435,15 @@ static void updateShaderUniforms(
 		location = shader.getUniformLocation("material.kd");
 		vec3 kd = node.material.kd;
 		glUniform3fv(location, 1, value_ptr(kd));
+
+		location = shader.getUniformLocation("material.ks");
+		vec3 ks = node.material.ks;
+		glUniform3fv(location, 1, value_ptr(ks));
+
+		location = shader.getUniformLocation("material.shininess");
+		float shininess = node.material.shininess;
+		glUniform1f(location, shininess);
+
 		CHECK_GL_ERRORS;
 	}
 	shader.disable();
@@ -379,20 +455,45 @@ static void updateShaderUniforms(
  * Called once per frame, after guiLogic().
  */
 void A3::draw() {
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(1.0, 1.0);
+	if( use_depth_buffering ) {
+		glEnable( GL_DEPTH_TEST );
+		glDepthFunc( GL_LESS );
+	} else {
+		glDisable( GL_DEPTH_TEST );
+	}
 
-	glEnable( GL_DEPTH_TEST );
-	renderSceneGraph(*m_rootNode);
+	if( use_backface_culling && use_frontface_culling) {
+		glEnable( GL_CULL_FACE );
+		glCullFace( GL_FRONT_AND_BACK );
+	}
+	else if( use_backface_culling ) {
+		glEnable( GL_CULL_FACE );
+		glCullFace( GL_BACK );
+	} 
+	else if( use_frontface_culling ) {
+		glEnable( GL_CULL_FACE );
+		glCullFace( GL_FRONT );
+	} else {
+		glDisable( GL_CULL_FACE );
+	}
 
+	glBindVertexArray(m_vao_meshData);
+
+	renderSceneGraph(*m_rootNode, glm::mat4(1.0f));
+	glBindVertexArray(0);
+	CHECK_GL_ERRORS;
 
 	glDisable( GL_DEPTH_TEST );
 	renderArcCircle();
 }
 
 //----------------------------------------------------------------------------------------
-void A3::renderSceneGraph(const SceneNode & root) {
+void A3::renderSceneGraph(const SceneNode & root, glm::mat4 transformation) {
 
 	// Bind the VAO once here, and reuse for all GeometryNode rendering below.
-	glBindVertexArray(m_vao_meshData);
+	// glBindVertexArray(m_vao_meshData);
 
 	// This is emphatically *not* how you should be drawing the scene graph in
 	// your final implementation.  This is a non-hierarchical demonstration
@@ -426,8 +527,9 @@ void A3::renderSceneGraph(const SceneNode & root) {
 		m_shader.disable();
 	}
 
-	glBindVertexArray(0);
-	CHECK_GL_ERRORS;
+	for (const SceneNode * node : root.children) {
+		renderSceneGraph(*node, transformation);
+	}
 }
 
 //----------------------------------------------------------------------------------------
@@ -486,7 +588,29 @@ bool A3::mouseMoveEvent (
 	bool eventHandled(false);
 
 	// Fill in with event handling code...
+	if (!ImGui::IsMouseHoveringAnyWindow()) {
+		double changeInX = xPos - previousXPos;
+		double changeInY = yPos - previousYPos;
+		if (isLeftDragging == true) {
+			if (interactionMode == 0) {
+				m_view = translateMatrix(changeInX*0.01f, changeInY * -0.01f, 0) * m_view;
 
+			}
+		}
+		if(isMiddleDragging == true){
+			if(interactionMode == 0){
+				m_view = translateMatrix(0, 0, changeInY * 0.01f) * m_view;
+			}
+		}
+		if(isRightDragging == true){
+			if(interactionMode == 0){
+				m_view = rotateYMatrix(changeInX * 0.01f) * m_view;
+			}
+		}
+	}
+	previousXPos = xPos;
+	previousYPos = yPos;
+	eventHandled=true;
 	return eventHandled;
 }
 
@@ -502,6 +626,52 @@ bool A3::mouseButtonInputEvent (
 	bool eventHandled(false);
 
 	// Fill in with event handling code...
+
+	if (!ImGui::IsMouseHoveringAnyWindow()) {
+		double xpos, ypos;
+      	glfwGetCursorPos(glfwGetCurrentContext(), &xpos, &ypos);
+
+		if(button==GLFW_MOUSE_BUTTON_LEFT){
+			if (actions == 1){
+				//hold
+				isLeftDragging = true;
+
+			}
+			if (actions == 0){
+				//let go
+				isLeftDragging = false;
+				previousYPos = ypos;
+				previousXPos = xpos;	
+			}
+			eventHandled = true;
+		}
+		else if(button==GLFW_MOUSE_BUTTON_RIGHT){
+			if(actions == 1){
+				//hold
+				isRightDragging = true;
+			}
+			if(actions == 0){
+				//let go
+				isRightDragging = false;
+				previousYPos = ypos;
+				previousXPos = xpos;
+			}	
+			eventHandled = true;
+		} 
+		else if(button==GLFW_MOUSE_BUTTON_MIDDLE) {
+			if(actions == 1){
+				//hold
+				isMiddleDragging = true;
+			}
+			if(actions == 0){
+				//let go
+				isMiddleDragging = false;
+				previousYPos = ypos;
+				previousXPos = xpos;
+			}	
+			eventHandled = true;
+		}
+	}
 
 	return eventHandled;
 }
