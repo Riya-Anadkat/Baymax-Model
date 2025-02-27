@@ -10,6 +10,7 @@ using namespace std;
 #include "JointNode.hpp"
 
 #include <imgui/imgui.h>
+#include <random>
 
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/io.hpp>
@@ -29,6 +30,10 @@ bool isMiddleDragging = false;
 bool isRightDragging = false;
 double previousXPos = 0.0;
 double previousYPos = 0.0;
+BatchInfoMap m_batchInfoMap;
+
+std::vector<glm::mat4> xforms;
+std::vector<glm::vec3> cols;
 
 glm::mat4 rotateYMatrix(float angle) {
 	// glm::mat4 rotatedMatrix = glm::mat4(cos(angle), 0, sin(angle), 0,
@@ -55,6 +60,9 @@ glm::mat4 translateMatrix(float x, float y, float z) {
 	translatedMatrix[3]=glm::vec4(x,y,z,1.0f);
 	return translatedMatrix;
 }
+bool do_picking = false;
+std::vector<bool> selected;
+
 
 //----------------------------------------------------------------------------------------
 // Constructor
@@ -85,7 +93,8 @@ A3::~A3()
 void A3::init()
 {
 	// Set the background colour.
-	glClearColor(0.85, 0.85, 0.85, 1.0);
+	// glClearColor(0.85, 0.85, 0.85, 1.0);
+	glClearColor(0.35, 0.35, 0.35, 1.0);
 
 	createShaderProgram();
 
@@ -120,7 +129,25 @@ void A3::init()
 
 	initLightSources();
 
+	// for( size_t idx = 0; idx < 100; ++idx ) {
+	// 	selected.push_back( false );
+	// }
+	std::default_random_engine generator;
+	std::uniform_real_distribution<double> distribution(0.0,1.0);
 
+	for( size_t idx = 0; idx < 100; ++idx ) {
+		glm::mat4 T = glm::translate( glm::mat4(), glm::vec3(
+			(distribution(generator) - 0.5) * 5.0, 
+			(distribution(generator) - 0.5) * 5.0, 
+			distribution(generator) * -5.0 - 5.0 ) );
+		glm::vec3 col( distribution(generator), distribution(generator), distribution(generator) );
+
+		xforms.push_back( T );
+		cols.push_back( col );
+		selected.push_back( false );
+	}
+
+	do_picking = false;
 	// Exiting the current scope calls delete automatically on meshConsolidator freeing
 	// all vertex data resources.  This is fine since we already copied this data to
 	// VBOs on the GPU.  We have no use for storing vertex data on the CPU side beyond
@@ -306,21 +333,26 @@ void A3::uploadCommonSceneUniforms() {
 	{
 		//-- Set Perpsective matrix uniform for the scene:
 		GLint location = m_shader.getUniformLocation("Perspective");
+
 		glUniformMatrix4fv(location, 1, GL_FALSE, value_ptr(m_perpsective));
 		CHECK_GL_ERRORS;
 
+		
+		location = m_shader.getUniformLocation("picking");
+		glUniform1i( location, do_picking ? 1 : 0 );
+
 
 		//-- Set LightSource uniform for the scene:
-		{
+		if( !do_picking ) {
 			location = m_shader.getUniformLocation("light.position");
 			glUniform3fv(location, 1, value_ptr(m_light.position));
 			location = m_shader.getUniformLocation("light.rgbIntensity");
 			glUniform3fv(location, 1, value_ptr(m_light.rgbIntensity));
 			CHECK_GL_ERRORS;
-		}
+		
 
 		//-- Set background light ambient intensity
-		{
+		
 			location = m_shader.getUniformLocation("ambientIntensity");
 			vec3 ambientIntensity(0.25f);
 			glUniform3fv(location, 1, value_ptr(ambientIntensity));
@@ -404,7 +436,7 @@ void A3::guiLogic()
 		ImGui::PopID();
 		
 		ImGui::Text( "Framerate: %.1f FPS", ImGui::GetIO().Framerate );
-
+		
 	ImGui::End();
 }
 
@@ -424,25 +456,42 @@ static void updateShaderUniforms(
 		glUniformMatrix4fv(location, 1, GL_FALSE, value_ptr(modelView));
 		CHECK_GL_ERRORS;
 
-		//-- Set NormMatrix:
-		location = shader.getUniformLocation("NormalMatrix");
-		mat3 normalMatrix = glm::transpose(glm::inverse(mat3(modelView)));
-		glUniformMatrix3fv(location, 1, GL_FALSE, value_ptr(normalMatrix));
-		CHECK_GL_ERRORS;
+		if(do_picking) {
+			unsigned int idx = node.m_nodeId;
+			float r = float(idx&0xff) / 255.0f;
+			float g = float((idx>>8)&0xff) / 255.0f;
+			float b = float((idx>>16)&0xff) / 255.0f;
+
+			location = shader.getUniformLocation("material.kd");
+			glUniform3f( location, r, g, b );
+			CHECK_GL_ERRORS;
+		}
+		else {
+			//-- Set NormMatrix:
+			location = shader.getUniformLocation("NormalMatrix");
+			mat3 normalMatrix = glm::transpose(glm::inverse(mat3(modelView)));
+			glUniformMatrix3fv(location, 1, GL_FALSE, value_ptr(normalMatrix));
+			CHECK_GL_ERRORS;
 
 
-		//-- Set Material values:
-		location = shader.getUniformLocation("material.kd");
-		vec3 kd = node.material.kd;
-		glUniform3fv(location, 1, value_ptr(kd));
+			//-- Set Material values:
+			location = shader.getUniformLocation("material.kd");
+			vec3 kd = node.material.kd;
+			if(selected[node.m_nodeId]){
+				// printf("objId: %d\n", node.m_nodeId);
+				kd = vec3(1.0f, 1.0f, 0.0f);
+			}
+			glUniform3fv(location, 1, value_ptr(kd));
 
-		location = shader.getUniformLocation("material.ks");
-		vec3 ks = node.material.ks;
-		glUniform3fv(location, 1, value_ptr(ks));
+			location = shader.getUniformLocation("material.ks");
+			vec3 ks = node.material.ks;
+			glUniform3fv(location, 1, value_ptr(ks));
 
-		location = shader.getUniformLocation("material.shininess");
-		float shininess = node.material.shininess;
-		glUniform1f(location, shininess);
+			location = shader.getUniformLocation("material.shininess");
+			float shininess = node.material.shininess;
+			glUniform1f(location, shininess);
+
+		}
 
 		CHECK_GL_ERRORS;
 	}
@@ -457,6 +506,15 @@ static void updateShaderUniforms(
 void A3::draw() {
 	glEnable(GL_POLYGON_OFFSET_FILL);
 	glPolygonOffset(1.0, 1.0);
+
+	// if( do_picking ) {
+	// 	glClearColor( 1.0, 1.0, 1.0, 1.0 );
+	// 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+
+	// } else {
+	// 	glClearColor( 0.35, 0.35, 0.35, 1.0 );
+	// }
+
 	if( use_depth_buffering ) {
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LESS );
@@ -484,7 +542,6 @@ void A3::draw() {
 	renderSceneGraph(*m_rootNode, glm::mat4(1.0f));
 	glBindVertexArray(0);
 	CHECK_GL_ERRORS;
-
 	glDisable( GL_DEPTH_TEST );
 	renderArcCircle();
 }
@@ -515,9 +572,7 @@ void A3::renderSceneGraph(const SceneNode & root, glm::mat4 transformation) {
 
 		const GeometryNode * geometryNode = static_cast<const GeometryNode *>(node);
 
-		updateShaderUniforms(m_shader, *geometryNode, m_view);
-
-
+		updateShaderUniforms(m_shader, *geometryNode, m_view);			
 		// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
 		BatchInfo batchInfo = m_batchInfoMap[geometryNode->meshId];
 
@@ -635,6 +690,50 @@ bool A3::mouseButtonInputEvent (
 			if (actions == 1){
 				//hold
 				isLeftDragging = true;
+				glfwGetCursorPos( m_window, &xpos, &ypos );
+
+				do_picking = true;
+
+				uploadCommonSceneUniforms();
+				glClearColor(1.0, 1.0, 1.0, 1.0 );
+				glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+				glClearColor(0.35, 0.35, 0.35, 1.0);
+
+				draw();
+
+				// I don't know if these are really necessary anymore.
+				// glFlush();
+				// glFinish();
+
+				CHECK_GL_ERRORS;
+
+				// Ugly -- FB coordinates might be different than Window coordinates
+				// (e.g., on a retina display).  Must compensate.
+				xpos *= double(m_framebufferWidth) / double(m_windowWidth);
+				// WTF, don't know why I have to measure y relative to the bottom of
+				// the window in this case.
+				ypos = m_windowHeight - ypos;
+				ypos *= double(m_framebufferHeight) / double(m_windowHeight);
+
+				GLubyte buffer[ 4 ] = { 0, 0, 0, 0 };
+				// A bit ugly -- don't want to swap the just-drawn false colours
+				// to the screen, so read from the back buffer.
+				glReadBuffer( GL_BACK );
+				// Actually read the pixel at the mouse location.
+				glReadPixels( int(xpos), int(ypos), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, buffer );
+				CHECK_GL_ERRORS;
+
+				// Reassemble the object ID.
+				unsigned int what = buffer[0] + (buffer[1] << 8) + (buffer[2] << 16);
+
+				if( what < xforms.size() ) {
+					selected[what] = !selected[what];
+				}
+
+				do_picking = false;
+
+				CHECK_GL_ERRORS;
+				
 
 			}
 			if (actions == 0){

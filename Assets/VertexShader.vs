@@ -3,6 +3,8 @@
 // Model-Space coordinates
 in vec3 position;
 in vec3 normal;
+uniform bool picking;
+
 
 struct LightSource {
     vec3 position;
@@ -50,8 +52,12 @@ vec3 lighting(vec3 vertPosition, vec3 vertNormal) {
 
 void main() {
 	vec4 pos4 = vec4(position, 1.0);
-
-	vcolour = lighting((ModelView * pos4).xyz, normalize(NormalMatrix * normal));
-	
+    
+    if( picking ) {
+		vcolour = vec3(material.kd);
+	} 
+    else{
+	    vcolour = lighting((ModelView * pos4).xyz, normalize(NormalMatrix * normal));
+    }
 	gl_Position = Perspective * ModelView * pos4;
 }
