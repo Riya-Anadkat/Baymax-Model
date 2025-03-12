@@ -1,6 +1,7 @@
 white = gr.material({1.0, 1.0, 1.0}, {0.1, 0.1, 0.1}, 8)
 black = gr.material({0.0, 0.0, 0.0}, {0.1, 0.1, 0.1}, 8)
 rootnode = gr.node('root')
+rootnode:translate(0.0, 0.0, -5.0)
 
 torso = gr.mesh('sphere', 'torso')
 torso:scale(1.0, 1.4, 0.9)
@@ -8,7 +9,8 @@ torso:translate(0.0, 0.0, -5.0)
 torso:set_material(white)
 rootnode:add_child(torso)
 
-shouldersJoint = gr.joint('shouldersJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+shouldersJoint = gr.joint('shouldersJoint', {-90.0, 0.0, 90.0}, {-90.0, 0.0, 90.0})
+shouldersJoint:translate(0.0, 1.5, -5.0)
 rootnode:add_child(shouldersJoint)
 
 shoulders = gr.mesh('sphere', 'shoulders')
@@ -23,7 +25,8 @@ tummy:translate(0.0, -0.3, -5.0)
 tummy:set_material(white)
 torso:add_child(tummy)
 
-neckJoint = gr.joint('neckJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+neckJoint = gr.joint('neckJoint', {-45.0, 0.0, 45.0}, {-45.0, 0.0, 45.0})
+neckJoint:translate(0.0, 1.6, -5.0)
 shouldersJoint:add_child(neckJoint)
 
 head = gr.mesh('sphere', 'head')
@@ -50,7 +53,8 @@ line:translate(0.0, 1.6, -4.7)
 line:set_material(black)
 head:add_child(line)
 
-rightArmJoint = gr.joint('rightArmJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightArmJoint = gr.joint('rightArmJoint', {-10.0, 0.0, 10.0}, {-10.0, 0.0, 10.0})
+rightArmJoint:translate(1.0, 1.5, -5.0)
 shouldersJoint:add_child(rightArmJoint)
 
 rightArm = gr.mesh('sphere', 'rightArm')
@@ -60,7 +64,8 @@ rightArm:rotate('z', 30)
 rightArm:set_material(white)
 rightArmJoint:add_child(rightArm)
 
-rightLowerArmJoint = gr.joint('rightLowerArmJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightLowerArmJoint = gr.joint('rightLowerArmJoint', {-90.0, 0.0, 90.0}, {-90.0, 0.0, 90.0})
+rightLowerArmJoint:translate(1.0, 0.0, -5.0)
 rightArmJoint:add_child(rightLowerArmJoint)
 
 rightLowerArm = gr.mesh('sphere', 'rightLowerArm')
@@ -70,48 +75,119 @@ rightLowerArm:rotate('z', 10)
 rightLowerArm:set_material(white)
 rightLowerArmJoint:add_child(rightLowerArm)
 
-
-rightThumbJoint = gr.joint('rightThumbJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightThumbJoint = gr.joint('rightThumbJoint', {-45.0, 0.0, 45.0}, {-45.0, 0.0, 45.0})
+rightThumbJoint:translate(1.3, -1.10, -5.0)
 rightLowerArmJoint:add_child(rightThumbJoint)
 
 rightThumb = gr.mesh('sphere', 'rightThumb')
-rightThumb:scale(0.07, 0.20, 0.15)
+rightThumb:scale(0.07, 0.20, 0.07)
 rightThumb:translate(1.4, -0.45, -5)
 rightThumb:set_material(white)
 rightThumb:rotate('z', -25)
 rightThumbJoint:add_child(rightThumb)
 
-rightIndexFingerJoint = gr.joint('rightIndexFingerJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightIndexFingerJoint = gr.joint('rightIndexFingerJoint', {-30.0, 0.0, 30.0}, {-30.0, 0.0, 30.0})
+rightIndexFingerJoint:translate(1.3, -1.10, -5.0)
 rightLowerArmJoint:add_child(rightIndexFingerJoint)
 
 rightIndexFinger = gr.mesh('sphere', 'rightIndexFinger')
-rightIndexFinger:scale(0.07, 0.20, 0.15)
+rightIndexFinger:scale(0.07, 0.20, 0.07)
 rightIndexFinger:rotate('z', -30)
 rightIndexFinger:translate(1.30, -1.15, -5)
 rightIndexFinger:set_material(white)
 rightIndexFingerJoint:add_child(rightIndexFinger)
 
-rightMiddleFingerJoint = gr.joint('rightMiddleFingerJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightMiddleFingerJoint = gr.joint('rightMiddleFingerJoint', {-30.0, 0.0, 30.0}, {-30.0, 0.0, 30.0})
+rightMiddleFingerJoint:translate(1.28, -1.05, -5.0)
 rightLowerArmJoint:add_child(rightMiddleFingerJoint)
 
 rightMiddleFinger = gr.mesh('sphere', 'rightMiddleFinger')
-rightMiddleFinger:scale(0.05, 0.20, 0.15)
+rightMiddleFinger:scale(0.05, 0.20, 0.07)
 rightMiddleFinger:rotate('z', -25)
 rightMiddleFinger:translate(1.28, -1.08, -5.1)
 rightMiddleFinger:set_material(white)
 rightMiddleFingerJoint:add_child(rightMiddleFinger)
 
-rightRingFingerJoint = gr.joint('rightRingFingerJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightRingFingerJoint = gr.joint('rightRingFingerJoint', {-30.0, 0.0, 30.0}, {-30.0, 0.0, 30.0})
+rightRingFingerJoint:translate(1.28, -1.05, -5.2)
 rightLowerArmJoint:add_child(rightRingFingerJoint)
 
 rightRingFinger = gr.mesh('sphere', 'rightRingFinger')
-rightRingFinger:scale(0.05, 0.20, 0.15)
+rightRingFinger:scale(0.05, 0.20, 0.07)
 rightRingFinger:rotate('z', -20)
 rightRingFinger:translate(1.28, -1.08, -5.2)
 rightRingFinger:set_material(white)
 rightRingFingerJoint:add_child(rightRingFinger)
 
-rightThighJoint = gr.joint('rightThighJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+leftArmJoint = gr.joint('leftArmJoint', {-10.0, 0.0, 10.0}, {-10.0, 0.0, 10.0})
+leftArmJoint:translate(-1.0, 1.5, -5.0)
+shouldersJoint:add_child(leftArmJoint)
+
+leftArm = gr.mesh('sphere', 'leftArm')
+leftArm:scale(0.30, 0.8, 0.4)
+leftArm:translate(-1.1, -0.1, -5.0)
+
+leftArm:rotate('z', -30)
+leftArm:set_material(white)
+leftArmJoint:add_child(leftArm)
+
+leftLowerArmJoint = gr.joint('leftLowerArmJoint', {-90.0, 0.0, 90.0}, {-90.0, 0.0, 90.0})
+leftLowerArmJoint:translate(-1.0, 0.0, -5.0)
+leftArmJoint:add_child(leftLowerArmJoint)
+
+leftLowerArm = gr.mesh('sphere', 'leftLowerArm')
+leftLowerArm:scale(0.40, 0.75, 0.4)
+leftLowerArm:translate(-1.1, -0.6, -5.0)
+leftLowerArm:rotate('z', -10)
+leftLowerArm:set_material(white)
+leftLowerArmJoint:add_child(leftLowerArm)
+
+leftThumbJoint = gr.joint('leftThumbJoint', {-45.0, 0.0, 45.0}, {-45.0, 0.0, 45.0})
+leftThumbJoint:translate(-1.3, -1.10, -5.0)
+leftLowerArmJoint:add_child(leftThumbJoint)
+
+leftThumb = gr.mesh('sphere', 'leftThumb')
+leftThumb:scale(0.07, 0.20, 0.07)
+leftThumb:translate(-1.4, -0.45, -5)
+leftThumb:set_material(white)
+leftThumb:rotate('z', 25)
+leftThumbJoint:add_child(leftThumb)
+
+leftIndexFingerJoint = gr.joint('leftIndexFingerJoint', {-30.0, 0.0, 30.0}, {-30.0, 0.0, 30.0})
+leftIndexFingerJoint:translate(-1.3, -1.10, -5.0)
+leftLowerArmJoint:add_child(leftIndexFingerJoint)
+
+leftIndexFinger = gr.mesh('sphere', 'leftIndexFinger')
+leftIndexFinger:scale(0.07, 0.20, 0.07)
+leftIndexFinger:rotate('z', 30)
+leftIndexFinger:translate(-1.30, -1.15, -5)
+leftIndexFinger:set_material(white)
+leftIndexFingerJoint:add_child(leftIndexFinger)
+
+leftMiddleFingerJoint = gr.joint('leftMiddleFingerJoint', {-30.0, 0.0, 30.0}, {-30.0, 0.0, 30.0})
+leftMiddleFingerJoint:translate(-1.28, -1.05, -5.0)
+leftLowerArmJoint:add_child(leftMiddleFingerJoint)
+
+leftMiddleFinger = gr.mesh('sphere', 'leftMiddleFinger')
+leftMiddleFinger:scale(0.05, 0.20, 0.07)
+leftMiddleFinger:rotate('z', 25)
+leftMiddleFinger:translate(-1.28, -1.08, -5.1)
+leftMiddleFinger:set_material(white)
+leftMiddleFingerJoint:add_child(leftMiddleFinger)
+
+leftRingFingerJoint = gr.joint('leftRingFingerJoint', {-30.0, 0.0, 30.0}, {-30.0, 0.0, 30.0})
+leftRingFingerJoint:translate(-1.28, -1.05, -5.2)
+leftLowerArmJoint:add_child(leftRingFingerJoint)
+
+leftRingFinger = gr.mesh('sphere', 'leftRingFinger')
+leftRingFinger:scale(0.05, 0.20, 0.07)
+leftRingFinger:rotate('z', 20)
+leftRingFinger:translate(-1.28, -1.08, -5.2)
+leftRingFinger:set_material(white)
+leftRingFingerJoint:add_child(leftRingFinger)
+
+rightThighJoint = gr.joint('rightThighJoint', {-60.0, 0.0, 60.0}, {-60.0, 0.0, 60.0})
+rightThighJoint:translate(0.45, -1.2, -5.0)
 rootnode:add_child(rightThighJoint)
 
 rightThigh = gr.mesh('sphere', 'rightThigh')
@@ -121,7 +197,8 @@ rightThigh:translate(0.45, -1.5, -5.0)
 rightThigh:set_material(white)
 rightThighJoint:add_child(rightThigh)
 
-rightKneeJoint = gr.joint('rightKneeJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+rightKneeJoint = gr.joint('rightKneeJoint', {-150.0, 0.0, 150.0}, {-150.0, 0.0, 150.0})
+rightKneeJoint:translate(0.4, -1.5, -5.0)
 rightThighJoint:add_child(rightKneeJoint)
 
 rightKnee = gr.mesh('sphere', 'rightKnee')
@@ -131,7 +208,8 @@ rightKnee:translate(0.4, -1.9, -5.0)
 rightKnee:set_material(white)
 rightKneeJoint:add_child(rightKnee)
 
-leftThighJoint = gr.joint('leftThighJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+leftThighJoint = gr.joint('leftThighJoint', {-60.0, 0.0, 60.0}, {-60.0, 0.0, 60.0})
+leftThighJoint:translate(-0.45, -1.2, -5.0)
 rootnode:add_child(leftThighJoint)
 
 leftThigh = gr.mesh('sphere', 'leftThigh')
@@ -141,7 +219,8 @@ leftThigh:translate(-0.45, -1.5, -5.0)
 leftThigh:set_material(white)
 leftThighJoint:add_child(leftThigh)
 
-leftKneeJoint = gr.joint('leftKneeJoint', {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0})
+leftKneeJoint = gr.joint('leftKneeJoint', {-150.0, 0.0, 150.0}, {-150.0, 0.0, 150.0})
+leftKneeJoint:translate(-0.4, -1.5, -5.0)
 leftThighJoint:add_child(leftKneeJoint)
 
 leftKnee = gr.mesh('sphere', 'leftKnee')
@@ -152,5 +231,3 @@ leftKnee:set_material(white)
 leftKneeJoint:add_child(leftKnee)
 
 return rootnode
-
-

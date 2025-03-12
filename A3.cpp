@@ -8,13 +8,14 @@ using namespace std;
 #include "cs488-framework/MathUtils.hpp"
 #include "GeometryNode.hpp"
 #include "JointNode.hpp"
-
 #include <imgui/imgui.h>
 #include <random>
 
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/io.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
+#include <array>
 
 using namespace glm;
 
@@ -30,10 +31,20 @@ bool isMiddleDragging = false;
 bool isRightDragging = false;
 double previousXPos = 0.0;
 double previousYPos = 0.0;
+double initialYPos = 0.0;
 BatchInfoMap m_batchInfoMap;
+glm::mat4 rotationMat4;
+
 
 std::vector<glm::mat4> xforms;
 std::vector<glm::vec3> cols;
+
+bool show_circle = false;
+
+
+std::vector<std::vector<std::pair<int, glm::mat4>>> undoStack;
+std::vector<std::vector<std::pair<int, glm::mat4>>> redoStack;
+
 
 glm::mat4 rotateYMatrix(float angle) {
 	// glm::mat4 rotatedMatrix = glm::mat4(cos(angle), 0, sin(angle), 0,
@@ -63,6 +74,91 @@ glm::mat4 translateMatrix(float x, float y, float z) {
 bool do_picking = false;
 std::vector<bool> selected;
 
+#include <cmath>
+
+void vCalcRotVec(float fNewX, float fNewY,
+                 float fOldX, float fOldY,
+                 float fDiameter,
+                 float &fVecX, float &fVecY, float &fVecZ) {
+    float fNewVecX, fNewVecY, fNewVecZ, fOldVecX, fOldVecY, fOldVecZ, fLength;
+
+    fNewVecX = fNewX * 2.0f / fDiameter;
+    fNewVecY = fNewY * 2.0f / fDiameter;
+    fNewVecZ = (1.0f - fNewVecX * fNewVecX - fNewVecY * fNewVecY);
+
+    if (fNewVecZ < 0.0f) {
+        fLength = sqrt(1.0f - fNewVecZ);
+        fNewVecZ = 0.0f;
+        fNewVecX /= fLength;
+        fNewVecY /= fLength;
+    } else {
+        fNewVecZ = sqrt(fNewVecZ);
+    }
+
+    fOldVecX = fOldX * 2.0f / fDiameter;
+    fOldVecY = fOldY * 2.0f / fDiameter;
+    fOldVecZ = (1.0f - fOldVecX * fOldVecX - fOldVecY * fOldVecY);
+
+    if (fOldVecZ < 0.0f) {
+        fLength = sqrt(1.0f - fOldVecZ);
+        fOldVecZ = 0.0f;
+        fOldVecX /= fLength;
+        fOldVecY /= fLength;
+    } else {
+        fOldVecZ = sqrt(fOldVecZ);
+    }
+
+ 
+    fVecX = fOldVecY * fNewVecZ - fNewVecY * fOldVecZ;
+    fVecY = fOldVecZ * fNewVecX - fNewVecZ * fOldVecX;
+    fVecZ = fOldVecX * fNewVecY - fNewVecX * fOldVecY;
+}
+
+void vAxisRotMatrix(float fVecX, float fVecY, float fVecZ, std::array<std::array<float, 4>, 4> &mNewMat) {
+    float fRadians, fInvLength, fNewVecX, fNewVecY, fNewVecZ;
+
+    fRadians = sqrt(fVecX * fVecX + fVecY * fVecY + fVecZ * fVecZ);
+
+
+    if (fRadians < 0.000001f) {
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                mNewMat[i][j] = (i == j) ? 1.0f : 0.0f;
+            }
+        }
+        return;
+    }
+
+  
+    fInvLength = 1.0f / fRadians;
+    fNewVecX = fVecX * fInvLength;
+    fNewVecY = fVecY * fInvLength;
+    fNewVecZ = fVecZ * fInvLength;
+
+    float dSinAlpha = sin(fRadians);
+    float dCosAlpha = cos(fRadians);
+    float dT = 1.0f - dCosAlpha;
+
+    mNewMat[0][0] = dCosAlpha + fNewVecX * fNewVecX * dT;
+    mNewMat[0][1] = fNewVecX * fNewVecY * dT + fNewVecZ * dSinAlpha;
+    mNewMat[0][2] = fNewVecX * fNewVecZ * dT - fNewVecY * dSinAlpha;
+    mNewMat[0][3] = 0.0f;
+
+    mNewMat[1][0] = fNewVecX * fNewVecY * dT - fNewVecZ * dSinAlpha;
+    mNewMat[1][1] = dCosAlpha + fNewVecY * fNewVecY * dT;
+    mNewMat[1][2] = fNewVecY * fNewVecZ * dT + fNewVecX * dSinAlpha;
+    mNewMat[1][3] = 0.0f;
+
+    mNewMat[2][0] = fNewVecZ * fNewVecX * dT + fNewVecY * dSinAlpha;
+    mNewMat[2][1] = fNewVecZ * fNewVecY * dT - fNewVecX * dSinAlpha;
+    mNewMat[2][2] = dCosAlpha + fNewVecZ * fNewVecZ * dT;
+    mNewMat[2][3] = 0.0f;
+
+    mNewMat[3][0] = 0.0f;
+    mNewMat[3][1] = 0.0f;
+    mNewMat[3][2] = 0.0f;
+    mNewMat[3][3] = 1.0f;
+}
 
 //----------------------------------------------------------------------------------------
 // Constructor
@@ -136,10 +232,7 @@ void A3::init()
 	std::uniform_real_distribution<double> distribution(0.0,1.0);
 
 	for( size_t idx = 0; idx < 100; ++idx ) {
-		glm::mat4 T = glm::translate( glm::mat4(), glm::vec3(
-			(distribution(generator) - 0.5) * 5.0, 
-			(distribution(generator) - 0.5) * 5.0, 
-			distribution(generator) * -5.0 - 5.0 ) );
+		glm::mat4 T = glm::mat4(1.0f); // No initial transformation
 		glm::vec3 col( distribution(generator), distribution(generator), distribution(generator) );
 
 		xforms.push_back( T );
@@ -400,26 +493,92 @@ void A3::guiLogic()
 		// Add more gui elements here here ...
 		if( ImGui::TreeNode( "Application" ) ) {
 			// Create Button, and check if it was clicked:
-			if( ImGui::Button( "Quit Application" ) ) {
+			if( ImGui::Button( "Reset Position (I)" ) ) {
+				glm::vec3 modelOrigin = glm::vec3(m_rootNode->trans[3]);
+				m_view = glm::translate(glm::mat4(1.0f), modelOrigin) * m_view;
+			}
+			if( ImGui::Button( "Reset Orientation (O)" ) ) {
+				m_view = glm::mat4(1.0f);
+			}
+			if( ImGui::Button( "Reset Joints (S)" ) ) {
+				for (size_t i = 0; i < xforms.size(); ++i) {
+					xforms[i] = glm::mat4(1.0f);
+				}
+				undoStack.clear();
+				redoStack.clear();
+			}
+			if( ImGui::Button( "Reset All (A)" ) ) {
+				m_view = glm::mat4(1.0f);
+				for (size_t i = 0; i < xforms.size(); ++i) {
+				xforms[i] = glm::mat4(1.0f);
+				}
+				undoStack.clear();
+				redoStack.clear();
+				}
+			if( ImGui::Button( "Quit Application (Q)" ) ) {
 				glfwSetWindowShouldClose(m_window, GL_TRUE);
 			}
 			ImGui::TreePop();
 		}
 		if( ImGui::TreeNode( "Edit" ) ) {
+			if( ImGui::Button( "Undo (U)" ) ) {
+				if (!undoStack.empty()) {
+					std::vector<std::pair<int, glm::mat4>> tempList;
+					for (size_t i = 0; i < selected.size(); ++i) {
+						if (selected[i]) {
+							tempList.push_back(std::make_pair(i, xforms[i]));
+						}
+					}
+					redoStack.push_back(tempList);
+
+					auto lastActionsList = undoStack.back();
+					for (const auto &action : lastActionsList) {
+						int nodeId = action.first;
+						glm::mat4 lastTransform = action.second;
+						xforms[nodeId] = lastTransform;
+					}
+					undoStack.pop_back();
+				
+				}
+			}
+			if( ImGui::Button( "Redo (R)" ) ) {
+				if (!redoStack.empty()) {
+					std::vector<std::pair<int, glm::mat4>> tempList;
+					for (size_t i = 0; i < selected.size(); ++i) {
+						if (selected[i]) {
+							tempList.push_back(std::make_pair(i, xforms[i]));
+						}
+					}
+					undoStack.push_back(tempList);
+
+					auto lastActionsList = redoStack.back();
+					redoStack.pop_back();
+					for (const auto &action : lastActionsList) {
+						int nodeId = action.first;
+						glm::mat4 lastTransform = action.second;
+						xforms[nodeId] = lastTransform;
+					}
+					
+				}
+				
+			}
 			ImGui::TreePop();
 		}
 		if( ImGui::TreeNode( "Options" ) ) {
-			if( ImGui::Checkbox( "Z-buffer", &use_depth_buffering ) ) {
+			if( ImGui::Checkbox( "Circle (C)", &show_circle ) ) {
+				
+			}
+			if( ImGui::Checkbox( "Z-buffer (Z)", &use_depth_buffering ) ) {
 			if( use_depth_buffering ) {
 				glEnable( GL_DEPTH_TEST );
 			} else {
 				glDisable( GL_DEPTH_TEST );
 			}
 			}
-			if( ImGui::Checkbox( "Backface culling", &use_backface_culling ) ) {
+			if( ImGui::Checkbox( "Backface culling (B)", &use_backface_culling ) ) {
 				
 			}
-			if( ImGui::Checkbox( "Frontface culling", &use_frontface_culling ) ) {
+			if( ImGui::Checkbox( "Frontface culling (F)", &use_frontface_culling ) ) {
 				
 			}
 			ImGui::TreePop();
@@ -453,6 +612,7 @@ static void updateShaderUniforms(
 		//-- Set ModelView matrix:
 		GLint location = shader.getUniformLocation("ModelView");
 		mat4 modelView = viewMatrix * node.trans;
+		
 		glUniformMatrix4fv(location, 1, GL_FALSE, value_ptr(modelView));
 		CHECK_GL_ERRORS;
 
@@ -479,7 +639,7 @@ static void updateShaderUniforms(
 			vec3 kd = node.material.kd;
 			if(selected[node.m_nodeId]){
 				// printf("objId: %d\n", node.m_nodeId);
-				kd = vec3(1.0f, 1.0f, 0.0f);
+				kd = vec3(0.5f, 0.7f, 1.0f);
 			}
 			glUniform3fv(location, 1, value_ptr(kd));
 
@@ -539,15 +699,17 @@ void A3::draw() {
 
 	glBindVertexArray(m_vao_meshData);
 
-	renderSceneGraph(*m_rootNode, glm::mat4(1.0f));
+	renderSceneGraph(*m_rootNode, m_view, m_rootNode->trans, 0, 0, 0, 0);
 	glBindVertexArray(0);
 	CHECK_GL_ERRORS;
 	glDisable( GL_DEPTH_TEST );
-	renderArcCircle();
+	if(show_circle){
+		renderArcCircle();
+	}
 }
 
 //----------------------------------------------------------------------------------------
-void A3::renderSceneGraph(const SceneNode & root, glm::mat4 transformation) {
+void A3::renderSceneGraph(const SceneNode & root, glm::mat4 transformation, glm::mat4 jointOrigin, float minX, float maxX, float minY, float maxY) {
 
 	// Bind the VAO once here, and reuse for all GeometryNode rendering below.
 	// glBindVertexArray(m_vao_meshData);
@@ -564,15 +726,39 @@ void A3::renderSceneGraph(const SceneNode & root, glm::mat4 transformation) {
 	// subclasses, that renders the subtree rooted at every node.  Or you
 	// could put a set of mutually recursive functions in this class, which
 	// walk down the tree from nodes of different types.
-
+	glm::mat4 nodeTransformation = transformation;
 	for (const SceneNode * node : root.children) {
+		if (node->m_nodeType == NodeType::JointNode){
+			const JointNode * jointNode = static_cast<const JointNode *>(node);
+			jointOrigin = jointNode->trans;
+			minX = jointNode->m_joint_x.min;
+			maxX = jointNode->m_joint_x.max;
+			minY = jointNode->m_joint_y.min;
+			maxY = jointNode->m_joint_y.max;
+			continue;
+		}
 
 		if (node->m_nodeType != NodeType::GeometryNode)
 			continue;
 
 		const GeometryNode * geometryNode = static_cast<const GeometryNode *>(node);
 
-		updateShaderUniforms(m_shader, *geometryNode, m_view);			
+		glm::mat4 rotationMatrix = xforms[geometryNode->m_nodeId];
+		glm::vec3 rotationAxis;
+		float rotationAngle;
+		glm::vec3 eulerAngles = glm::eulerAngles(glm::quat_cast(rotationMatrix));
+		rotationAxis = eulerAngles;
+		rotationAngle = glm::degrees(glm::length(rotationAxis));
+
+		if (rotationAngle < 12.0f) {
+			nodeTransformation = nodeTransformation * jointOrigin * rotationMatrix * glm::inverse(jointOrigin);
+		} else {
+			rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(12.0f), glm::normalize(rotationAxis));
+			nodeTransformation = nodeTransformation * jointOrigin * rotationMatrix * glm::inverse(jointOrigin);
+		}
+
+
+		updateShaderUniforms(m_shader, *geometryNode, nodeTransformation);			
 		// Get the BatchInfo corresponding to the GeometryNode's unique MeshId.
 		BatchInfo batchInfo = m_batchInfoMap[geometryNode->meshId];
 
@@ -583,7 +769,7 @@ void A3::renderSceneGraph(const SceneNode & root, glm::mat4 transformation) {
 	}
 
 	for (const SceneNode * node : root.children) {
-		renderSceneGraph(*node, transformation);
+		renderSceneGraph(*node, nodeTransformation, jointOrigin, minX, maxX, minY, maxY);
 	}
 }
 
@@ -656,10 +842,55 @@ bool A3::mouseMoveEvent (
 			if(interactionMode == 0){
 				m_view = translateMatrix(0, 0, changeInY * 0.01f) * m_view;
 			}
+			if (interactionMode == 1){
+
+
+
+				for (size_t i = 0; i < selected.size(); ++i) {
+					if (selected[i]) {
+					
+						xforms[i] = rotateZMatrix(changeInY * 0.01) * xforms[i];
+			
+				}
+
+					
+					
+				}
+			}
 		}
+		
 		if(isRightDragging == true){
 			if(interactionMode == 0){
-				m_view = rotateYMatrix(changeInX * 0.01f) * m_view;
+		
+				float newX = static_cast<float>(xPos) - m_windowWidth / 2.0f; 
+				float newY = m_windowHeight / 2.0f - static_cast<float>(yPos);
+				float oldX = static_cast<float>(previousXPos) - m_windowWidth / 2.0f;
+				float oldY = m_windowHeight / 2.0f - static_cast<float>(previousYPos);
+
+
+				float rotationAxisX, rotationAxisY, rotationAxisZ;
+				float diameter = m_windowHeight * 0.5;
+
+				vCalcRotVec(newX, newY, oldX, oldY, diameter, rotationAxisX, rotationAxisY, rotationAxisZ);
+
+				std::array<std::array<float, 4>, 4> rotationMatrix;
+				vAxisRotMatrix(rotationAxisX, rotationAxisY, rotationAxisZ, rotationMatrix);
+				
+				for (int i = 0; i < 4; ++i) {
+					for (int j = 0; j < 4; ++j) {
+						rotationMat4[i][j] = rotationMatrix[i][j];
+					}
+				}
+				glm::vec3 modelOrigin = glm::vec3(m_rootNode->trans[3]);
+				m_view = glm::translate(glm::mat4(1.0f), modelOrigin) * rotationMat4 * glm::translate(glm::mat4(1.0f), -modelOrigin) * m_view;
+                
+			}
+			if(interactionMode ==1){
+				for (size_t i = 0; i < selected.size(); ++i) {
+					if (selected[i]) {
+						xforms[i] = rotateYMatrix(changeInX * 0.01) * xforms[i];
+					}
+				}
 			}
 		}
 	}
@@ -691,7 +922,7 @@ bool A3::mouseButtonInputEvent (
 				//hold
 				isLeftDragging = true;
 				glfwGetCursorPos( m_window, &xpos, &ypos );
-
+				if (interactionMode == 1){
 				do_picking = true;
 
 				uploadCommonSceneUniforms();
@@ -733,7 +964,7 @@ bool A3::mouseButtonInputEvent (
 				do_picking = false;
 
 				CHECK_GL_ERRORS;
-				
+				}
 
 			}
 			if (actions == 0){
@@ -748,6 +979,7 @@ bool A3::mouseButtonInputEvent (
 			if(actions == 1){
 				//hold
 				isRightDragging = true;
+				
 			}
 			if(actions == 0){
 				//let go
@@ -760,16 +992,33 @@ bool A3::mouseButtonInputEvent (
 		else if(button==GLFW_MOUSE_BUTTON_MIDDLE) {
 			if(actions == 1){
 				//hold
+				initialYPos = ypos;
 				isMiddleDragging = true;
+				std::vector<std::pair<int, glm::mat4>> tempList;
+				for (size_t i = 0; i < selected.size(); ++i) {
+					if (selected[i]) {
+						tempList.push_back(std::make_pair(i, xforms[i]));
+					}
+				}
+				undoStack.push_back(tempList);
 			}
 			if(actions == 0){
 				//let go
 				isMiddleDragging = false;
 				previousYPos = ypos;
 				previousXPos = xpos;
+
+				// std::vector<std::pair<int, glm::mat4>> tempList;
+				// for (size_t i = 0; i < selected.size(); ++i) {
+				// 	if (selected[i]) {
+				// 		tempList.push_back(std::make_pair(i, xforms[i]));
+				// 	}
+				// }
+				// redoStack.push_back(tempList);
 			}	
 			eventHandled = true;
 		}
+
 	}
 
 	return eventHandled;
@@ -817,6 +1066,125 @@ bool A3::keyInputEvent (
 	if( action == GLFW_PRESS ) {
 		if( key == GLFW_KEY_M ) {
 			show_gui = !show_gui;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_P ) {
+			interactionMode = 0;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_J ) {
+			interactionMode = 1;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_I ) {
+			m_view = glm::mat4(1.0f);
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_O ) {
+			m_view = glm::mat4(1.0f);
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_S ) {
+			for (size_t i = 0; i < xforms.size(); ++i) {
+				xforms[i] = glm::mat4(1.0f);
+			}
+			undoStack.clear();
+			redoStack.clear();
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_A ) {
+			m_view = glm::mat4(1.0f);
+			for (size_t i = 0; i < xforms.size(); ++i) {
+				xforms[i] = glm::mat4(1.0f);
+			}
+			undoStack.clear();
+			redoStack.clear();
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_Q ) {
+			glfwSetWindowShouldClose(m_window, GL_TRUE);
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_C ) {
+			show_circle = !show_circle;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_Z ) {
+			use_depth_buffering = !use_depth_buffering;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_B ) {
+			use_backface_culling = !use_backface_culling;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_F ) {
+			use_frontface_culling = !use_frontface_culling;
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_U ) {
+			if (!undoStack.empty()) {
+				std::vector<std::pair<int, glm::mat4>> tempList;
+				for (size_t i = 0; i < selected.size(); ++i) {
+					if (selected[i]) {
+						tempList.push_back(std::make_pair(i, xforms[i]));
+					}
+				}
+				redoStack.push_back(tempList);
+
+				auto lastActionsList = undoStack.back();
+				for (const auto &action : lastActionsList) {
+					int nodeId = action.first;
+					glm::mat4 lastTransform = action.second;
+					xforms[nodeId] = lastTransform;
+				}
+				undoStack.pop_back();
+			}
+			eventHandled = true;
+		}
+	}
+	if( action == GLFW_PRESS ) {
+		if( key == GLFW_KEY_R ) {
+			if (!redoStack.empty()) {
+				std::vector<std::pair<int, glm::mat4>> tempList;
+				for (size_t i = 0; i < selected.size(); ++i) {
+					if (selected[i]) {
+						tempList.push_back(std::make_pair(i, xforms[i]));
+					}
+				}
+				undoStack.push_back(tempList);
+
+				auto lastActionsList = redoStack.back();
+				redoStack.pop_back();
+				for (const auto &action : lastActionsList) {
+					int nodeId = action.first;
+					glm::mat4 lastTransform = action.second;
+					xforms[nodeId] = lastTransform;
+				}
+			}
 			eventHandled = true;
 		}
 	}
